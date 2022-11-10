@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -60,12 +61,23 @@ public:
    */
   std::unique_ptr<podio::ROOTFrameData> readNextEntry(const std::string& name);
 
+  /**
+   * Read the specified data entry from which a Frame can be constructed for
+   * the given name. In case the entry does not exist for this name or in case
+   * there is no data for this name, this returns a nullptr.
+   */
+  std::unique_ptr<podio::ROOTFrameData> readEntry(const std::string& name, const unsigned entry);
+
   /// Returns number of entries for the given name
   unsigned getEntries(const std::string& name) const;
 
+  /// Get the build version of podio that has been used to write the current file
   podio::version::Version currentFileVersion() const {
     return m_fileVersion;
   }
+
+  /// Get the names of all the availalable Frame categories in the current file(s)
+  std::vector<std::string_view> getAvailableCategories() const;
 
 private:
   /**
@@ -102,6 +114,13 @@ private:
   CategoryInfo& getCategoryInfo(const std::string& name);
 
   GenericParameters readEventMetaData(CategoryInfo& catInfo);
+
+  /**
+   * Read the data entry specified in the passed CategoryInfo, and increase the
+   * counter aferwards. In case the requested entry is larger than the
+   * available number of entries, return a nullptr.
+   */
+  std::unique_ptr<podio::ROOTFrameData> readEntry(ROOTFrameReader::CategoryInfo& catInfo);
 
   /**
    * Get / read the buffers at index iColl in the passed category information

@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace podio {
@@ -32,14 +33,25 @@ public:
    */
   std::unique_ptr<podio::SIOFrameData> readNextEntry(const std::string& name);
 
+  /**
+   * Read the specified data entry from which a Frame can be constructed for
+   * the given name. In case the entry does not exist for this name or in
+   * case there is no data for this name, this returns a nullptr.
+   */
+  std::unique_ptr<podio::SIOFrameData> readEntry(const std::string& name, const unsigned entry);
+
   /// Returns number of entries for the given name
   unsigned getEntries(const std::string& name) const;
 
   void openFile(const std::string& filename);
 
+  /// Get the build version of podio that has been used to write the current file
   podio::version::Version currentFileVersion() const {
     return m_fileVersion;
   }
+
+  /// Get the names of all the availalable Frame categories in the current file(s)
+  std::vector<std::string_view> getAvailableCategories() const;
 
 private:
   void readPodioHeader();
