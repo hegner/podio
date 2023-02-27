@@ -23,13 +23,28 @@ endif()
 PODIO_ADD_ROOT_IO_DICT(TestDataModelDict TestDataModel "${headers}" src/selection.xml)
 PODIO_ADD_SIO_IO_BLOCKS(TestDataModel "${headers}" "${sources}")
 
+# Build the extension data model and link it against the upstream model
+PODIO_GENERATE_DATAMODEL(extension_model datalayout_extension.yaml ext_headers ext_sources
+  UPSTREAM_EDM datamodel:datalayout.yaml
+  IO_BACKEND_HANDLERS ${PODIO_IO_HANDLERS}
+  OUTPUT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/extension_model)
+
+PODIO_ADD_DATAMODEL_CORE_LIB(ExtensionDataModel "${ext_headers}" "${ext_sources}"
+  OUTPUT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/extension_model)
+target_link_libraries(ExtensionDataModel PUBLIC TestDataModel)
+
+PODIO_ADD_ROOT_IO_DICT(ExtensionDataModelDict ExtensionDataModel "${ext_headers}" ${CMAKE_CURRENT_SOURCE_DIR}/extension_model/src/selection.xml
+  OUTPUT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/extension_model)
+
+PODIO_ADD_SIO_IO_BLOCKS(ExtensionDataModel "${ext_headers}" "${ext_sources}")
+
 #--- small utility helper function to allow for a more terse definition of tests below
 function(CREATE_PODIO_TEST sourcefile additional_libs)
   string( REPLACE ".cpp" "" name ${sourcefile} )
   add_executable( ${name} ${sourcefile} )
   add_test(NAME ${name} COMMAND ${name})
 
-  target_link_libraries(${name} TestDataModel ${additional_libs})
+  target_link_libraries(${name} TestDataModel ExtensionDataModel ${additional_libs})
   set_property(TEST ${name} PROPERTY ENVIRONMENT
       LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:${CMAKE_BINARY_DIR}/src:$ENV{LD_LIBRARY_PATH}
       # Clear the ROOT_INCLUDE_PATH for the tests, to avoid potential conflicts
@@ -48,8 +63,9 @@ set(root_dependent_tests
   write_timed.cpp
   read_timed.cpp
   read_frame.cpp
-  write_frame_root.cpp)
-set(root_libs TestDataModelDict podio::podioRootIO)
+  write_frame_root.cpp
+  read_frame_legacy_root.cpp)
+set(root_libs TestDataModelDict ExtensionDataModelDict podio::podioRootIO)
 foreach( sourcefile ${root_dependent_tests} )
   CREATE_PODIO_TEST(${sourcefile} "${root_libs}")
 endforeach()
@@ -131,7 +147,8 @@ if (TARGET TestDataModelSioBlocks)
     write_timed_sio.cpp
     read_timed_sio.cpp
     read_frame_sio.cpp
-    write_frame_sio.cpp)
+    write_frame_sio.cpp
+    read_frame_legacy_sio.cpp)
   set(sio_libs podio::podioSioIO)
   foreach( sourcefile ${sio_dependent_tests} )
     CREATE_PODIO_TEST(${sourcefile} "${sio_libs}")
@@ -148,6 +165,7 @@ endif()
 set_property(TEST read PROPERTY DEPENDS write)
 set_property(TEST read-multiple PROPERTY DEPENDS write)
 set_property(TEST read_and_write PROPERTY DEPENDS write)
+set_property(TEST read_frame_legacy_root PROPERTY DEPENDS write)
 set_property(TEST read_timed PROPERTY DEPENDS write_timed)
 set_property(TEST read_frame PROPERTY DEPENDS write_frame_root)
 
@@ -162,6 +180,7 @@ if (TARGET read_sio)
   set_property(TEST read_and_write_sio PROPERTY DEPENDS write_sio)
   set_property(TEST read_timed_sio PROPERTY DEPENDS write_timed_sio)
   set_property(TEST read_frame_sio PROPERTY DEPENDS write_frame_sio)
+  set_property(TEST read_frame_legacy_sio PROPERTY DEPENDS write_sio)
 
   add_test(NAME check_benchmark_outputs_sio COMMAND check_benchmark_outputs write_benchmark_sio.root read_benchmark_sio.root)
   set_property(TEST check_benchmark_outputs_sio PROPERTY DEPENDS read_timed_sio write_timed_sio)
@@ -185,7 +204,11 @@ configure_file(CTestCustom.cmake ${CMAKE_BINARY_DIR}/CTestCustom.cmake)
 
 find_package(Threads REQUIRED)
 add_executable(unittest unittest.cpp frame.cpp)
-target_link_libraries(unittest PUBLIC TestDataModel PRIVATE Catch2::Catch2WithMain Threads::Threads)
+target_link_libraries(unittest PUBLIC TestDataModel PRIVATE Catch2::Catch2WithMain Threads::Threads podio::podioRootIO)
+if (ENABLE_SIO)
+  target_link_libraries(unittest PRIVATE podio::podioSioIO)
+  target_compile_definitions(unittest PRIVATE PODIO_WITH_SIO)
+endif()
 
 # The unittests are a bit better and they are labelled so we can put together a
 # list of labels that we want to ignore
@@ -225,18 +248,3 @@ else()
         LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:${CMAKE_BINARY_DIR}/src:$<TARGET_FILE_DIR:ROOT::Tree>:$ENV{LD_LIBRARY_PATH}
   )
 endif()
-
-# Build the extension data model and link it against the upstream model
-PODIO_GENERATE_DATAMODEL(extension_model datalayout_extension.yaml ext_headers ext_sources
-  UPSTREAM_EDM datamodel:datalayout.yaml
-  IO_BACKEND_HANDLERS ${PODIO_IO_HANDLERS}
-  OUTPUT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/extension_model)
-
-PODIO_ADD_DATAMODEL_CORE_LIB(ExtensionDataModel "${ext_headers}" "${ext_sources}"
-  OUTPUT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/extension_model)
-target_link_libraries(ExtensionDataModel PUBLIC TestDataModel)
-
-PODIO_ADD_ROOT_IO_DICT(ExtensionDataModelDict ExtensionDataModel "${ext_headers}" ${CMAKE_CURRENT_SOURCE_DIR}/extension_model/src/selection.xml
-  OUTPUT_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/extension_model)
-
-PODIO_ADD_SIO_IO_BLOCKS(ExtensionDataModel "${ext_headers}" "${ext_sources}")

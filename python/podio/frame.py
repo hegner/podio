@@ -2,7 +2,7 @@
 """Module for the python bindings of the podio::Frame"""
 
 # pylint: disable-next=import-error # gbl is a dynamic module from cppyy
-from cppyy.gbl import std
+import cppyy
 
 import ROOT
 # NOTE: It is necessary that this can be found on the ROOT_INCLUDE_PATH
@@ -22,10 +22,10 @@ def _determine_supported_parameter_types(lang):
           classes that are supported
   """
   types_tuple = podio.SupportedGenericDataTypes()
-  n_types = std.tuple_size[podio.SupportedGenericDataTypes].value
+  n_types = cppyy.gbl.std.tuple_size[podio.SupportedGenericDataTypes].value
 
   # Get the python types with the help of cppyy and the STL
-  py_types = (type(std.get[i](types_tuple)).__name__ for i in range(n_types))
+  py_types = (type(cppyy.gbl.std.get[i](types_tuple)).__name__ for i in range(n_types))
   if lang == 'py':
     return tuple(py_types)
   if lang == 'c++':
@@ -43,16 +43,25 @@ SUPPORTED_PARAMETER_TYPES = _determine_supported_parameter_types('c++')
 SUPPORTED_PARAMETER_PY_TYPES = _determine_supported_parameter_types('py')
 
 
+# Map that is necessary for easier disambiguation of parameters that are
+# available with more than one type under the same name. Maps a python type to
+# a c++ vector of the corresponding type or a c++ type to the vector
+_PY_TO_CPP_TYPE_MAP = {
+    pytype: f'std::vector<{cpptype}>' for (pytype, cpptype) in zip(SUPPORTED_PARAMETER_PY_TYPES,
+                                                                     SUPPORTED_PARAMETER_TYPES)
+    }
+_PY_TO_CPP_TYPE_MAP.update({
+    f'{cpptype}': f'std::vector<{cpptype}>' for cpptype in SUPPORTED_PARAMETER_TYPES
+    })
+
+
 class Frame:
   """Frame class that serves as a container of collection and meta data."""
 
-  # Map that is necessary for easier disambiguation of parameters that are
-  # available with more than one type under the same name. Maps a python type to
-  # a c++ vector of the corresponding type
-  _py_to_cpp_type_map = {
-      pytype: f'std::vector<{cpptype}>' for (pytype, cpptype) in zip(SUPPORTED_PARAMETER_PY_TYPES,
-                                                                     SUPPORTED_PARAMETER_TYPES)
-      }
+  # cppyy implicitly converts empty collections to False in boolean contexts. To
+  # distinguish between empty and non-existant collection create a nullptr here
+  # with the correct type that we can compare against
+  _coll_nullptr = cppyy.bind_object(cppyy.nullptr, 'podio::CollectionBase')
 
   def __init__(self, data=None):
     """Create a Frame.
@@ -91,8 +100,8 @@ class Frame:
         KeyError: If the collection with the name is not available
     """
     collection = self._frame.get(name)
-    if not collection:
-      raise KeyError
+    if collection == self._coll_nullptr:
+      raise KeyError(f"Collection '{name}' is not available")
     return collection
 
   @property
@@ -139,7 +148,7 @@ class Frame:
       raise ValueError(f'{name} parameter has {len(par_type)} different types available, '
                        'but no as_type argument to disambiguate')
 
-    req_type = self._py_to_cpp_type_map.get(as_type, None)
+    req_type = _PY_TO_CPP_TYPE_MAP.get(as_type, None)
     if req_type is None:
       raise ValueError(f'as_type value {as_type} cannot be mapped to a valid parameter type')
 
@@ -147,6 +156,43 @@ class Frame:
       raise ValueError(f'{name} parameter is not available as type {as_type}')
 
     return _get_param_value(req_type, name)
+
+  def get_parameters(self):
+    """Get the complete podio::GenericParameters object stored in this Frame.
+
+    NOTE: This is mainly intended for dumping things, for actually obtaining
+    parameters please use get_parameter
+
+    Returns:
+        podio.GenericParameters: The stored generic parameters
+    """
+    # Going via the not entirely inteded way here
+    return self._frame.getGenericParametersForWrite()
+
+  def get_param_info(self, name):
+    """Get the parameter type information stored under the given name.
+
+    Args:
+        name (str): The parameter name
+
+    Returns:
+        dict (str: int): The c++-type(s) of the stored parameter and the number of
+            parameters
+
+    Raise:
+        KeyError: If no parameter is stored under the given name
+    """
+    # This raises the KeyError if the name is not present
+    par_types = [t.replace('std::vector<', '').replace('>', '') for t in self._param_key_types[name]]
+    # Assume that we have one parameter and update the dictionary below in case
+    # there are more
+    par_infos = {t: 1 for t in par_types}
+    for par_type in par_types:
+      par_value = self.get_parameter(name, as_type=par_type)
+      if isinstance(par_value, list):
+        par_infos[par_type] = len(par_value)
+
+    return par_infos
 
   def _init_param_keys(self):
     """Initialize the param keys dict for easier lookup of the available parameters.

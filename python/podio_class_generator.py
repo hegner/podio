@@ -10,6 +10,7 @@ from copy import deepcopy
 from enum import IntEnum
 
 from collections.abc import Mapping
+from collections import defaultdict
 
 from itertools import zip_longest
 
@@ -90,8 +91,8 @@ class ClassGenerator:
     self.old_yamlfile = old_description
     self.evolution_file = evolution_file
     self.old_datamodel = None
-    self.old_datamodels_components = {}
-    self.old_datamodels_datatypes = {}
+    self.old_datamodels_components = set()
+    self.old_datamodels_datatypes = set()
 
     try:
       self.datamodel = PodioConfigReader.read(yamlfile, package_name, upstream_edm)
@@ -270,13 +271,11 @@ have resolvable schema evolution incompatibilities:")
 
   def _preprocess_for_obj(self, datatype):
     """Do the preprocessing that is necessary for the Obj classes"""
-    fwd_declarations = {}
+    fwd_declarations = defaultdict(list)
     includes, includes_cc = set(), set()
 
     for relation in datatype['OneToOneRelations']:
       if relation.full_type != datatype['class'].full_type:
-        if relation.namespace not in fwd_declarations:
-          fwd_declarations[relation.namespace] = []
         fwd_declarations[relation.namespace].append(relation.bare_type)
         includes_cc.add(self._build_include(relation))
 
@@ -509,17 +508,6 @@ have resolvable schema evolution incompatibilities:")
     return package_includes + upstream_includes + podio_includes + stl_includes
 
 
-def verify_io_handlers(handler):
-  """Briefly verify that all arguments passed as handlers are indeed valid"""
-  valid_handlers = (
-      'ROOT',
-      'SIO',
-      )
-  if handler in valid_handlers:
-    return handler
-  raise argparse.ArgumentTypeError(f'{handler} is not a valid io handler')
-
-
 def read_upstream_edm(name_path):
   """Read an upstream EDM yaml definition file to make the types that are defined
   in that available to the current EDM"""
@@ -552,8 +540,8 @@ if __name__ == "__main__":
                       'Header files will be put under <targetdir>/<packagename>/*.h. '
                       'Source files will be put under <targetdir>/src/*.cc')
   parser.add_argument('packagename', help='Name of the package.')
-  parser.add_argument('iohandlers', help='The IO backend specific code that should be generated',
-                      type=verify_io_handlers, nargs='+')
+  parser.add_argument('iohandlers', choices=['ROOT', 'SIO'], nargs='+',
+                      help='The IO backend specific code that should be generated')
   parser.add_argument('-q', '--quiet', dest='verbose', action='store_false', default=True,
                       help='Don\'t write a report to screen')
   parser.add_argument('-d', '--dryrun', action='store_true', default=False,

@@ -13,6 +13,10 @@
 #include "datamodel/ExampleWithOneRelationCollection.h"
 #include "datamodel/ExampleWithVectorMemberCollection.h"
 
+#include "extension_model/ContainedTypeCollection.h"
+#include "extension_model/ExternalComponentTypeCollection.h"
+#include "extension_model/ExternalRelationTypeCollection.h"
+
 #include "podio/Frame.h"
 #include "podio/UserDataCollection.h"
 
@@ -37,7 +41,9 @@ static const std::vector<std::string> collsToWrite = {"mcparticles",
                                                       "userDoubles",
                                                       "WithNamespaceMember",
                                                       "WithNamespaceRelation",
-                                                      "WithNamespaceRelationCopy"};
+                                                      "WithNamespaceRelationCopy",
+                                                      "emptyCollection",
+                                                      "emptySubsetColl"};
 
 auto createMCCollection() {
   auto mcps = ExampleMCCollection();
@@ -324,6 +330,53 @@ auto createNamespaceRelationCollection(int i) {
   return retVal;
 }
 
+auto createExtensionContainedCollection(int i) {
+  auto coll = extension::ContainedTypeCollection();
+  // The ContainedType only has a polar vector
+  auto contElem = coll.create();
+  contElem.setAVector({i * 123.f, 0.15f, 3.14f});
+
+  return coll;
+}
+
+auto createExtensionExternalComponentCollection(int i) {
+  auto coll = extension::ExternalComponentTypeCollection();
+
+  // Set the upstream components only here
+  auto extCompElem = coll.create();
+  extension::ExtComponent extComp{};
+  extComp.aStruct.data.x = 42 * i;
+  extComp.nspStruct = ex2::NamespaceStruct{i, 2 * i};
+  extCompElem.setAComponent(extComp);
+  SimpleStruct simpleS{};
+  simpleS.p = {i, i - 2, i + 4, i * 8};
+  extCompElem.setAStruct(simpleS);
+
+  return coll;
+}
+
+auto createExtensionExternalRelationCollection(int i, const ExampleHitCollection& hits,
+                                               const ExampleClusterCollection& clusters) {
+  auto coll = extension::ExternalRelationTypeCollection();
+
+  auto elem0 = coll.create();
+  elem0.setWeight(i * 100.f);
+  elem0.setSingleHit(hits[0]);
+
+  auto elem1 = coll.create();
+  elem1.addToClusters(clusters[1]);
+  elem1.addToClusters(clusters[0]);
+
+  auto elem2 = coll.create();
+  for (int j = 0; j < 3; j++) {
+    auto s = SimpleStruct();
+    s.y = j * i;
+    elem2.addToSomeStructs(s);
+  }
+
+  return coll;
+}
+
 podio::Frame makeFrame(int iFrame) {
   podio::Frame frame{};
 
@@ -367,6 +420,17 @@ podio::Frame makeFrame(int iFrame) {
   frame.putParameter("UserEventName", " event_number_" + std::to_string(iFrame));
   frame.putParameter("SomeVectorData", {1, 2, 3, 4});
   frame.putParameter("SomeVectorData", {"just", "some", "strings"});
+
+  // An empty collection
+  frame.put(ExampleClusterCollection(), "emptyCollection");
+  // An empty subset collection
+  auto emptySubsetColl = ExampleHitCollection();
+  emptySubsetColl.setSubsetCollection();
+  frame.put(std::move(emptySubsetColl), "emptySubsetColl");
+
+  frame.put(createExtensionContainedCollection(iFrame), "extension_Contained");
+  frame.put(createExtensionExternalComponentCollection(iFrame), "extension_ExternalComponent");
+  frame.put(createExtensionExternalRelationCollection(iFrame, hits, clusters), "extension_ExternalRelation");
 
   return frame;
 }

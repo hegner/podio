@@ -17,10 +17,10 @@
 
 {% with collection_type = class.bare_type + 'Collection' %}
 {{ collection_type }}::{{ collection_type }}() :
-  m_isValid(false), m_isPrepared(false), m_isSubsetColl(false), m_collectionID(0), m_storage() {}
+  m_isValid(false), m_isPrepared(false), m_isSubsetColl(false), m_collectionID(0), m_storageMtx(std::make_unique<std::mutex>()), m_storage() {}
 
 {{ collection_type }}::{{ collection_type }}({{ collection_type }}Data&& data, bool isSubsetColl) :
-  m_isValid(false), m_isPrepared(false), m_isSubsetColl(isSubsetColl), m_collectionID(0), m_storage(std::move(data)) {}
+  m_isValid(false), m_isPrepared(false), m_isSubsetColl(isSubsetColl), m_collectionID(0), m_storageMtx(std::make_unique<std::mutex>()), m_storage(std::move(data)) {}
 
 {{ collection_type }}::~{{ collection_type }}() {
   // Need to tell the storage how to clean-up
@@ -174,7 +174,7 @@ podio::CollectionReadBuffers {{ collection_type }}::createBuffers() /*const*/ {
   return readBuffers;
 }
 
-podio::CollectionReadBuffers {{ collection_type }}::createSchemaEvolvableBuffers(int readSchemaVersion, podio::Backend backend) /*const*/ {
+podio::CollectionReadBuffers {{ collection_type }}::createSchemaEvolvableBuffers(int readSchemaVersion, podio::Backend /*backend*/) /*const*/ {
   // no version difference -> no-op
   if (readSchemaVersion == {{ class.schema_version }}) {
     return createBuffers();
