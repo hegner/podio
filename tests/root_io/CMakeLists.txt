@@ -12,7 +12,7 @@ set(root_dependent_tests
   read_frame_legacy_root.cpp
   read_frame_root_multiple.cpp
   )
-set(root_libs TestDataModelDict ExtensionDataModelDict podio::podioRootIO)
+set(root_libs podio::podioRootIO)
 foreach( sourcefile ${root_dependent_tests} )
   CREATE_PODIO_TEST(${sourcefile} "${root_libs}")
 endforeach()
@@ -37,7 +37,7 @@ set_property(TEST check_benchmark_outputs PROPERTY DEPENDS read_timed write_time
 if (DEFINED CACHE{PODIO_TEST_INPUT_DATA_DIR})
   message(STATUS "Using test inputs stored in: "  ${PODIO_TEST_INPUT_DATA_DIR})
   add_executable(read-legacy-files-root read-legacy-files-root.cpp)
-  target_link_libraries(read-legacy-files-root PRIVATE TestDataModel TestDataModelDict podio::podioRootIO)
+  target_link_libraries(read-legacy-files-root PRIVATE TestDataModel podio::podioRootIO)
 
   # Add a legacy test case based on a base executable and a version for which an
   # input file exists
